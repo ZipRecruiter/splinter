@@ -78,7 +78,6 @@ func NewAnalyzer() *analysis.Analyzer {
 		Doc:   "pairs allows verification of key/value pairs in ...interface{} args; see -pair-func especially",
 		Flags: *fset,
 		Run: func(p *analysis.Pass) (interface{}, error) {
-			var hasError bool
 			i := p.TypesInfo
 
 			for _, f := range p.Files {
@@ -105,42 +104,47 @@ func NewAnalyzer() *analysis.Analyzer {
 
 						if (len(c.Args)-offset)%2 != 0 {
 							p.Reportf(c.Pos(), "%d args passed to %s; must be even", len(c.Args), path+"."+s.Sel.Name)
-							hasError = true
 							return true
 						}
-						if !argsCorrect(p, path+"."+s.Sel.Name, offset, c) {
-							hasError = true
-						}
+						argsCorrect(p, path+"."+s.Sel.Name, offset, c)
 
+						return true
+					}
+
+					named, ok := nv.Recv().(*types.Named)
+					if !ok {
+						// if there is no receiver (or
+						// it's anonymous) it's some
+						// weird thing like an
+						// anonymous struct with a func
+						// being called.  structs with func
+						// fields do not conform to interfaces,
+						// and thus are not relevant to this
 						return true
 					}
 
 					// Log methods
-					interfaceOffset, interfaceOK := offsets[funcSelector{fun: s.Sel.Name}]
-					// XXX concreteOffset, concreteOK := offsets[funcSelector{fun: s.Sel.Name, pkg}]
-					if !interfaceOK {
+					if offset, ok := offsets[funcSelector{fun: s.Sel.Name}]; ok {
+						if len(c.Args)%2 != 0 {
+							p.Reportf(c.Pos(), "%d args passed to %s; must be even", len(c.Args), types.SelectionString(nv, nil))
+							return true
+						}
+
+						argsCorrect(p, types.SelectionString(nv, nil), offset, c)
 						return true
 					}
-					named, ok := nv.Recv().(*types.Named)
-					if !ok {
-						// don't think anonymous receivers are relevant
+					if offset, ok := offsets[funcSelector{fun: s.Sel.Name, pkg: named.Obj().Pkg().Path(), typ: named.Obj().Name()}]; ok {
+						if len(c.Args)%2 != 0 {
+							p.Reportf(c.Pos(), "%d args passed to %s; must be even", len(c.Args), types.SelectionString(nv, nil))
+							return true
+						}
+
+						argsCorrect(p, types.SelectionString(nv, nil), offset, c)
 						return true
 					}
 
-					if len(c.Args)%2 != 0 {
-						p.Reportf(c.Pos(), "%d args passed to %s; must be even", len(c.Args), types.ObjectString(named.Obj(), nil))
-						hasError = true
-						return true
-					}
-
-					if !argsCorrect(p, types.ObjectString(named.Obj(), nil), interfaceOffset, c) {
-						hasError = true
-					}
 					return true
 				}, nil)
-			}
-			if hasError {
-				// return nil, errors.New("pairs failed; see reported messages")
 			}
 			return nil, nil
 		},
