@@ -1,12 +1,14 @@
 # ZipRecruiter linters for Go
 
 This module is meant to hold analyzer packages that we build at ZipRecruiter.
-When possible we'd prefer to commit to other open source analyzers.
+When possible we'd prefer to contribute to other open source analyzers.
 
 ## pairs
 
-The `github.com/ZipRecruiter/splinter/pairs` linter will detect broken key/value
-pairs.  A key is defined as a string and a value can be anything.
+The
+[`github.com/ZipRecruiter/splinter/pairs`](https://godoc.org/github.com/ZipRecruiter/splinter/pairs)
+linter will detect broken key/value pairs.  A key is defined as a string and a
+value can be anything.
 
 A missing value is an error:
 
