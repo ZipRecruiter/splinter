@@ -123,25 +123,22 @@ func NewAnalyzer() *analysis.Analyzer {
 						return true
 					}
 
-					// Log methods
-					if offset, ok := offsets[funcSelector{fun: s.Sel.Name}]; ok {
-						if len(c.Args)%2 != 0 {
-							p.Reportf(c.Pos(), "%d args passed to %s; must be even", len(c.Args), types.SelectionString(nv, nil))
-							return true
-						}
-
-						argsCorrect(p, types.SelectionString(nv, nil), offset, c)
+					// try generous interface first
+					offset, ok := offsets[funcSelector{fun: s.Sel.Name}]
+					if !ok {
+						// otherwise try concrete type
+						offset, ok = offsets[funcSelector{fun: s.Sel.Name, pkg: named.Obj().Pkg().Path(), typ: named.Obj().Name()}]
+					}
+					if !ok {
 						return true
 					}
-					if offset, ok := offsets[funcSelector{fun: s.Sel.Name, pkg: named.Obj().Pkg().Path(), typ: named.Obj().Name()}]; ok {
-						if len(c.Args)%2 != 0 {
-							p.Reportf(c.Pos(), "%d args passed to %s; must be even", len(c.Args), types.SelectionString(nv, nil))
-							return true
-						}
 
-						argsCorrect(p, types.SelectionString(nv, nil), offset, c)
+					if len(c.Args)%2 != 0 {
+						p.Reportf(c.Pos(), "%d args passed to %s; must be even", len(c.Args), types.SelectionString(nv, nil))
 						return true
 					}
+
+					argsCorrect(p, types.SelectionString(nv, nil), offset, c)
 
 					return true
 				}, nil)
