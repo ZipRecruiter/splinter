@@ -24,7 +24,7 @@ func that can define any number of the following:
 3. The AddPairs method from the go.zr.org/common/go/errors/details.Pairs type,
 start pairs at 0:
 
-	-pair-func go.zr.org/common/go/errors/details.Pairs.AddPairs=0 \ # method
+	-pair-func go.zr.org/common/go/errors/details.Pairs.AddPairs=0
 */
 package pairs
 
