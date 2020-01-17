@@ -21,16 +21,25 @@ func Foo() {
 	// generous interface
 	l.Log("foo", "bar", "baz") // want "3 args passed to method \\(a.logger\\) Log\\(inputs ...interface{}\\); must be even"
 	l.Log(1, "bar") // want "arg 0 to method \\(a.logger\\) Log\\(inputs ...interface{}\\) is constant int but should be a constant string"
+	l.Log(l, "bar") // want "arg 0 to method \\(a.logger\\) Log\\(inputs ...interface{}\\) is expression a.logger but should be a constant string"
 	l.Log("foo", 1, "bar", "baz")
-
-	// package func
-	b.X("", 1, "frew") // want "arg 1 to a/b.X is constant int but should be a constant string"
-	b.X("", "frew") // want "2 args passed to a/b.X; must be even"
 
 	// concrete method
 	y := b.Y(0)
-	y.Z(1, "frew") // want "arg 0 to method \\(a/b.Y\\) Z\\(inputs ...interface{}\\) is constant int but should be a constant string"
 	y.Z("frew") // want "1 args passed to method \\(a/b.Y\\) Z\\(inputs ...interface{}\\); must be even"
+	y.Z(1, "frew") // want "arg 0 to method \\(a/b.Y\\) Z\\(inputs ...interface{}\\) is constant int but should be a constant string"
+	y.Z(l, "frew") // want "arg 0 to method \\(a/b.Y\\) Z\\(inputs ...interface{}\\) is expression a.logger but should be a constant string"
+	y.Z("foo", "frew")
+
+	// package func
+	b.X("", "frew") // want "2 args passed to a/b.X; must be even"
+	b.X("", 1, "frew") // want "arg 1 to a/b.X is constant int but should be a constant string"
+	b.X("", l, "frew") // want "arg 1 to a/b.X is expression a.logger but should be a constant string"
+	b.X("", "foo", "frew")
+
+	// variable key is ok for now
+	x := "station"
+	b.X("", x, "frew")
 }
 
 `,
