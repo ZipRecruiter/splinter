@@ -22,6 +22,10 @@ A non-string is also an error:
 logger.Log("message", "successful!", /* missing key? */ 3)
 ```
 
+See [`pairs`
+documentation](https://godoc.org/github.com/ZipRecruiter/splinter/pairs) for
+more info.
+
 ### Example Run
 
 ```bash

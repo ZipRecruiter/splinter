@@ -11,7 +11,7 @@ A non-string is also an error:
 	logger.Log("message", "successful!",                    3)
 
 The sole analyzer (from NewAnalyzer) in this package takes a -pair-flag
-func that can define any number of the following:
+flag that can define any number of the following:
 
 1. Any method named Log, start pairs at 0:
 
@@ -25,6 +25,12 @@ func that can define any number of the following:
 start pairs at 0:
 
 	-pair-func go.zr.org/common/go/errors/details.Pairs.AddPairs=0
+
+The other flag defined by this package is -assume-pair flag, which users can
+use to define type "safe" for passing around.  The idea is that you'd define
+all methods on the type as pair funcs; this means you are passing around the
+value instead of a raw slice of interfaces, which could get modified in
+surprising ways by users.
 */
 package pairs
 
