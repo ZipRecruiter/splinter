@@ -41,9 +41,7 @@ import (
 	"golang.org/x/tools/go/ast/astutil"
 )
 
-type funcSelector struct {
-	pkg, typ, fun string
-}
+type funcSelector struct{ pkg, typ, fun string }
 
 type funcOffset map[funcSelector]int
 
@@ -67,12 +65,119 @@ func (o funcOffset) String() string {
 	return "Woo"
 }
 
+type whitelistableType struct{ pkg, typ string }
+
+type typeWhitelist map[whitelistableType]bool
+
+var typeWhitelistMatcher = regexp.MustCompile(`^(.*?)\.([^\./]+)$`)
+
+func (w typeWhitelist) Set(v string) error {
+	m := typeWhitelistMatcher.FindStringSubmatch(v)
+	if len(m) != 3 {
+		return errors.New("invalid type whitelist; should be of form <pkg>.<type>")
+	}
+
+	w[whitelistableType{pkg: m[1], typ: m[2]}] = true
+	return nil
+}
+
+func (w typeWhitelist) String() string {
+	return "Woo"
+}
+
 // NewAnalyzer returns a fresh pairs analyzer.
 func NewAnalyzer() *analysis.Analyzer {
 	fset := flag.NewFlagSet("pairs", flag.ContinueOnError)
 
 	offsets := funcOffset{}
+	whitelistedTypes := typeWhitelist{}
+
 	fset.Var(offsets, "pair-func", "validate this func")
+	fset.Var(whitelistedTypes, "assume-pair", "assume this type is safe")
+
+	// Same comment as on argsCorrect below. --fREW 2020-01-18
+	isWhitelisted := func(p *analysis.Pass, e ast.Expr) bool {
+		typ := p.TypesInfo.Types[e]
+		if p, ok := typ.Type.(*types.Pointer); ok {
+			if named, ok := p.Elem().(*types.Named); ok {
+				if whitelistedTypes[whitelistableType{pkg: named.Obj().Pkg().Path(), typ: named.Obj().Name()}] {
+					return true
+				}
+			}
+		}
+		if named, ok := typ.Type.(*types.Named); ok {
+			if whitelistedTypes[whitelistableType{pkg: named.Obj().Pkg().Path(), typ: named.Obj().Name()}] {
+				return true
+			}
+		}
+		return false
+
+	}
+
+	// it'd be better to make a value that has an argsCorrect method than
+	// this weird closure oriented style.  If I get around to it I'll
+	// change this. --fREW 2020-01-17
+	argsCorrect := func(p *analysis.Pass, name string, offset int, c *ast.CallExpr) {
+		if len(c.Args) <= offset {
+			return
+		}
+
+		// if we only have 1 arg it needs to be one of the whitelisted
+		// types
+		if len(c.Args)-offset == 1 {
+			if isWhitelisted(p, c.Args[offset]) {
+				return
+			}
+		}
+
+		if (len(c.Args)-offset)%2 != 0 {
+			p.Reportf(c.Pos(), "%d args passed to %s; must be even", len(c.Args), name)
+			return
+		}
+
+		for i, a := range c.Args[offset:] {
+			if isWhitelisted(p, a) {
+				p.Reportf(c.Pos(), "arg %d to %s is a whitelisted type; should pass one or none", i+offset, name)
+				return
+			}
+		}
+
+		for i, a := range c.Args[offset:] {
+			if i%2 != 0 {
+				continue
+			}
+
+			typ := p.TypesInfo.Types[a]
+
+			// TODO prefer *anonymous* constant
+
+			// it's a string constant, this is preferred
+			if typ.Value != nil { // constant
+				if typ.Value.Kind() != constant.String {
+					p.Reportf(a.Pos(), "arg %d to %s is constant %s but should be a constant string",
+						i+offset,
+						name,
+						types.TypeString(typ.Type, nil),
+					)
+				}
+				continue
+			}
+
+			if typ.Type != nil { // expression
+				b, ok := typ.Type.Underlying().(*types.Basic)
+				if ok && b.Kind() == types.String {
+					// it's a string expression, this is not preferred, but is acceptable
+					continue
+				}
+				p.Reportf(a.Pos(), "arg %d to %s is expression %s but should be a constant string",
+					i+offset,
+					name,
+					types.TypeString(typ.Type, nil),
+				)
+			}
+		}
+	}
+
 	return &analysis.Analyzer{
 		Name:  "pairs",
 		Doc:   "pairs allows verification of key/value pairs in ...interface{} args; see -pair-func especially",
@@ -102,10 +207,6 @@ func NewAnalyzer() *analysis.Analyzer {
 							return true
 						}
 
-						if (len(c.Args)-offset)%2 != 0 {
-							p.Reportf(c.Pos(), "%d args passed to %s; must be even", len(c.Args), path+"."+s.Sel.Name)
-							return true
-						}
 						argsCorrect(p, path+"."+s.Sel.Name, offset, c)
 
 						return true
@@ -133,65 +234,11 @@ func NewAnalyzer() *analysis.Analyzer {
 						return true
 					}
 
-					if len(c.Args)%2 != 0 {
-						p.Reportf(c.Pos(), "%d args passed to %s; must be even", len(c.Args), types.SelectionString(nv, nil))
-						return true
-					}
-
 					argsCorrect(p, types.SelectionString(nv, nil), offset, c)
-
 					return true
 				}, nil)
 			}
 			return nil, nil
 		},
 	}
-}
-
-func argsCorrect(p *analysis.Pass, name string, offset int, c *ast.CallExpr) bool {
-	if len(c.Args) <= offset {
-		return true
-	}
-
-	ret := true
-
-	// XXX assume all good if sole arg is a whitelisted type
-	for i, a := range c.Args[offset:] {
-		if i%2 != 0 {
-			continue
-		}
-
-		typ := p.TypesInfo.Types[a]
-
-		// TODO prefer *anonymous* constant
-
-		// it's a string constant, this is preferred
-		if typ.Value != nil { // constant
-			if typ.Value.Kind() != constant.String {
-				p.Reportf(a.Pos(), "arg %d to %s is constant %s but should be a constant string",
-					i+offset,
-					name,
-					types.TypeString(typ.Type, nil),
-				)
-				ret = false
-			}
-			continue
-		}
-
-		if typ.Type != nil { // expression
-			b, ok := typ.Type.Underlying().(*types.Basic)
-			if ok && b.Kind() == types.String {
-				// it's a string expression, this is not preferred, but is acceptable
-				continue
-			}
-			p.Reportf(a.Pos(), "arg %d to %s is expression %s but should be a constant string",
-				i+offset,
-				name,
-				types.TypeString(typ.Type, nil),
-			)
-			ret = false
-		}
-	}
-
-	return ret
 }
