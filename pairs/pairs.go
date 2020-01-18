@@ -50,7 +50,7 @@ var funcOffsetMatcher = regexp.MustCompile(`^(?:(.*?)(?:\.([^\./]+))?)?\.([^\.]+
 func (o funcOffset) Set(v string) error {
 	m := funcOffsetMatcher.FindStringSubmatch(v)
 	if len(m) != 5 {
-		return errors.New("invalis func offset; should be of form [pkg[.type]].<func>=<offset>")
+		return errors.New("invalid func offset; should be of form [pkg[.type]].<func>=<offset>")
 	}
 	val, err := strconv.Atoi(m[4])
 	if err != nil {
